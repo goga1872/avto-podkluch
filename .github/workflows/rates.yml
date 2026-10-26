@@ -1,0 +1,28 @@
+name: Курс ЦБ
+on:
+  schedule:
+    - cron: "15 5,13 * * *"   # 08:15 и 16:15 по Москве
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  rates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Обновить rates.json
+        run: |
+          python3 - <<'PY'
+          import json, urllib.request
+          j = json.load(urllib.request.urlopen("https://www.cbr-xml-daily.ru/daily_json.js", timeout=30))
+          rates = {"RUB": 1.0}
+          for k, v in j["Valute"].items():
+              rates[k] = v["Value"] / v["Nominal"]
+          json.dump({"date": j["Date"][:10], "rates": rates}, open("rates.json", "w"))
+          PY
+      - name: Сохранить, если изменился
+        run: |
+          git config user.name "rates-bot"
+          git config user.email "rates-bot@users.noreply.github.com"
+          git add rates.json
+          git diff --cached --quiet || (git commit -m "Курс ЦБ $(date +%F)" && git push)

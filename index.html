@@ -534,18 +534,17 @@ textarea.field { text-align: left; resize: none; min-height: 84px; padding: 12px
     RATES = rates; RATE_DATE = date;
     $('rate-line').textContent = 'Курс ЦБ на ' + date + ': € ' + rates.EUR.toFixed(2).replace('.', ',') + ' ₽';
   }
-  function loadRates() {
-    var fallback = fetch('rates.json').then(function (r) { return r.json(); });
-    var live = new Promise(function (ok, no) {
-      var ctl = window.AbortController ? new AbortController() : null, t = setTimeout(function () { ctl && ctl.abort(); no(); }, 2000);
-      fetch('https://www.cbr-xml-daily.ru/daily_json.js', ctl ? { signal: ctl.signal } : {}).then(function (r) { return r.json(); }).then(function (j) {
-        clearTimeout(t); var out = { RUB: 1 };
-        Object.keys(j.Valute).forEach(function (k) { out[k] = j.Valute[k].Value / j.Valute[k].Nominal; });
-        var d = new Date(j.Date); ok({ rates: out, date: ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) });
-      }).catch(no);
+  function savedRates() {   // курс, выложенный вместе с приложением: приходит за десятки миллисекунд
+    return fetch('rates.json').then(function (r) { return r.json(); }).then(function (f) {
+      var p = f.date.split('-'); return { rates: f.rates, date: p[2] + '.' + p[1] };
     });
-    return live.catch(function () {
-      return fallback.then(function (f) { var p = f.date.split('-'); return { rates: f.rates, date: p[2] + '.' + p[1] }; });
+  }
+  function liveRates() {    // свежий курс ЦБ; не держит первый экран
+    var ctl = window.AbortController ? new AbortController() : null, t = setTimeout(function () { ctl && ctl.abort(); }, 4000);
+    return fetch('https://www.cbr-xml-daily.ru/daily_json.js', ctl ? { signal: ctl.signal } : {}).then(function (r) { return r.json(); }).then(function (j) {
+      clearTimeout(t); var out = { RUB: 1 };
+      Object.keys(j.Valute).forEach(function (k) { out[k] = j.Valute[k].Value / j.Valute[k].Nominal; });
+      var d = new Date(j.Date); return { rates: out, date: ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) };
     });
   }
 
@@ -594,9 +593,12 @@ textarea.field { text-align: left; resize: none; min-height: 84px; padding: 12px
 
   applyAccent(); chips(); initForm();
   if (document.readyState === 'complete') initTg(); else window.addEventListener('load', initTg);
-  Promise.all([fetch('rules.json').then(function (r) { return r.json(); }), loadRates()]).then(function (res) {
+  var whenCalc = function (fn) { (function wait() { window.APCalc ? fn() : setTimeout(wait, 20); })(); };
+  var live = liveRates().catch(function () { return null; });
+  Promise.all([fetch('rules.json').then(function (r) { return r.json(); }), savedRates()]).then(function (res) {
     R = res[0]; setRates(res[1].rates, res[1].date);
-    var wait = function () { window.APCalc ? render() : setTimeout(wait, 20); }; wait();
+    whenCalc(render);
+    live.then(function (l) { if (l && l.rates.EUR) { setRates(l.rates, l.date); whenCalc(render); } });
   }).catch(function () { $('t-sum').textContent = 'Нет связи'; $('t-sub').innerHTML = '<a href="" style="color:var(--accent)">Повторить</a>'; });
 })();
 </script>
