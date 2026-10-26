@@ -16,8 +16,7 @@
   --bg: #0e0e10; --surface: #18181b; --surface-2: #202024; --border: #2b2b30;
   --text: #f3f3f5; --muted: #a3a3ab; --dim: #6e6e76;
   --accent: #ffb020; --accent-ink: #1a1205;
-  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
-  --accent-line: color-mix(in srgb, var(--accent) 42%, transparent);
+  --accent-soft: rgba(255,176,32,.14); --accent-line: rgba(255,176,32,.42);   /* без color-mix: старые WebView */
   --bad: #ff6b6b; --warn: #ff9f43;
   --r-btn: 14px; --r-card: 18px; --r-pill: 100px;
   --tg-top: env(safe-area-inset-top, 0px); --tg-bottom: env(safe-area-inset-bottom, 0px);
@@ -25,8 +24,8 @@
   --ease-smooth: cubic-bezier(.308,.505,.095,1); --ease-snappy: cubic-bezier(.397,.726,.045,1);
   --t-smooth: 560ms; --t-snappy: 480ms; --t-quick: 300ms; --t-exit: 360ms;
 }
-:root[data-accent="blue"] { --accent: #4da3ff; --accent-ink: #03111f; }
-:root[data-accent="red"]  { --accent: #ff5a4f; --accent-ink: #1f0503; }
+:root[data-accent="blue"] { --accent: #4da3ff; --accent-ink: #03111f; --accent-soft: rgba(77,163,255,.14); --accent-line: rgba(77,163,255,.42); }
+:root[data-accent="red"]  { --accent: #ff5a4f; --accent-ink: #1f0503; --accent-soft: rgba(255,90,79,.14); --accent-line: rgba(255,90,79,.42); }
 @supports (transition-timing-function: linear(0, 1)) {
   :root:not(.wk) {
     --ease-smooth: linear(0, 0.0071 1.5%, 0.0261 2.9%, 0.0541 4.4%, 0.0889 5.9%, 0.1655 8.6%, 0.4167 16.8%, 0.5078 20.1%, 0.5891 23.4%, 0.6644 27%, 0.7281 30.5%, 0.7812 34%, 0.825 37.5%, 0.8807 43.4%, 0.9196 49.2%, 0.9463 55.1%, 0.9644 60.9%, 0.9876 75.6%, 1);
@@ -51,7 +50,7 @@ header.top { display: flex; align-items: flex-start; justify-content: space-betw
 .brand p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 .swatch { display: flex; gap: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r-pill); background: var(--surface); }
 .swatch button { width: 18px; height: 18px; border-radius: 50%; border: 0; padding: 0; position: relative; transition: transform var(--t-quick) var(--ease-snappy); }
-.swatch button::before { content: ""; position: absolute; inset: -13px; }
+.swatch button::before { content: ""; position: absolute; top: -13px; right: -13px; bottom: -13px; left: -13px; }
 .swatch button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px currentColor; }
 .swatch button:active { transform: scale(.85); }
 
@@ -193,7 +192,7 @@ textarea.field { text-align: left; resize: none; min-height: 84px; padding: 12px
 .nav button:active { transform: scale(.94); }
 
 /* шторка */
-.scrim { position: fixed; inset: 0; z-index: 900; background: rgba(0,0,0,.55); opacity: 0; pointer-events: none; transition: opacity 300ms; }
+.scrim { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 900; background: rgba(0,0,0,.55); opacity: 0; pointer-events: none; transition: opacity 300ms; }
 .scrim.on { opacity: 1; pointer-events: auto; }
 .sheet {
   position: fixed; z-index: 901; left: 0; right: 0; bottom: 0; max-height: calc(100vh - var(--tg-top) - 24px); overflow-y: auto;
@@ -520,13 +519,23 @@ textarea.field { text-align: left; resize: none; min-height: 84px; padding: 12px
     var c = car(), calcLine = c && current ? NAMES[state.country] + ': ' + fmtInt(c.price) + ' ' + c.currency + ', ' + MONTHS[state.month - 1] + ' ' + state.year +
       ', ' + (c.engine_cc || 'электро') + (c.engine_cc ? ' см³' : '') + ', ' + Math.round(c.power_hp) + ' л.с. → ' +
       (current.blocked ? 'экспорт запрещён' : mln(current.totalMin) + '–' + mln(current.totalMax) + ' млн ₽') : '';
-    var payload = { type: 'lead', url: url, text: txt, calc: calcLine };
-    var w = tg();
-    try { if (w && w.initData && w.sendData) { w.sendData(JSON.stringify(payload)); haptic('success'); return; } } catch (e) {}
     var msg = 'Заявка\n' + (url ? url + '\n' : '') + (txt ? txt + '\n' : '') + (calcLine ? 'Расчёт: ' + calcLine : '');
-    var done = function () { haptic('success'); toast('Заявка скопирована — вставь её в чат с ботом');
-      setTimeout(function () { if (w && w.openTelegramLink) w.openTelegramLink('https://t.me/avto_podkluch_bot?start=lead'); }, 900); };
-    if (navigator.clipboard) navigator.clipboard.writeText(msg).then(done, done); else done();
+    var w = tg();
+    var openBot = function () { if (w && w.openTelegramLink) w.openTelegramLink('https://t.me/avto_podkluch_bot?start=lead'); else location.href = 'https://t.me/avto_podkluch_bot?start=lead'; };
+    var manual = function () {   // буфер обмена недоступен: показываем текст, его можно выделить и скопировать
+      $('sheet-body').innerHTML = '<h3>Скопируй заявку</h3><div class="sub">Телефон не дал скопировать автоматически. Выдели текст, скопируй и вставь в чат с ботом.</div>' +
+        '<textarea class="field" id="lead-copy" readonly style="width:100%;min-height:140px;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px"></textarea>' +
+        '<div style="height:14px"></div><button class="btn wide" id="lead-open">Открыть чат с ботом</button>';
+      $('lead-copy').value = msg;
+      $('scrim').classList.add('on'); $('sheet').classList.add('on'); sheetOpen = true;
+      setTimeout(function () { try { $('lead-copy').focus(); $('lead-copy').select(); } catch (e) {} }, 400);
+      $('lead-open').onclick = openBot;
+    };
+    var copied = function () { haptic('success'); toast('Заявка скопирована — вставь её в чат с ботом'); setTimeout(openBot, 900); };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(msg).then(copied, manual);
+      else manual();
+    } catch (e) { manual(); }
   };
 
   /* ---------- данные ---------- */
